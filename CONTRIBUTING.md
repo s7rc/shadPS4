@@ -1,5 +1,5 @@
 <!--
-SPDX-FileCopyrightText: 2024 shadPS4 Emulator Project
+SPDX-FileCopyrightText: 2024 shadPS4 Emulator Projectx
 SPDX-License-Identifier: GPL-2.0-or-later
 -->
 
