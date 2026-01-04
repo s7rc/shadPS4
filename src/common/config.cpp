@@ -175,7 +175,7 @@ static ConfigEntry<bool> shouldPatchShaders(false);
 static ConfigEntry<u32> vblankFrequency(60);
 static ConfigEntry<bool> isFullscreen(false);
 static ConfigEntry<string> fullscreenMode("Windowed");
-static ConfigEntry<string> presentMode("Mailbox");
+static ConfigEntry<string> presentMode("Fifo");  // Changed from "Mailbox" - FIFO is better for integrated GPUs
 static ConfigEntry<bool> isHDRAllowed(false);
 static ConfigEntry<bool> fsrEnabled(false);
 static ConfigEntry<bool> rcasEnabled(true);
@@ -191,7 +191,7 @@ static ConfigEntry<bool> vkCrashDiagnostic(false);
 static ConfigEntry<bool> vkHostMarkers(false);
 static ConfigEntry<bool> vkGuestMarkers(false);
 static ConfigEntry<bool> rdocEnable(false);
-static ConfigEntry<bool> pipelineCacheEnable(false);
+static ConfigEntry<bool> pipelineCacheEnable(true);  // Changed from false - CRITICAL for performance
 static ConfigEntry<bool> pipelineCacheArchive(false);
 
 // Debug

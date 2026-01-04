@@ -90,11 +90,13 @@ void Swapchain::SetHDR(bool hdr) {
         return;
     }
 
-    auto result = instance.GetDevice().waitIdle();
-    if (result != vk::Result::eSuccess) {
-        LOG_WARNING(ImGui, "Failed to wait for Vulkan device idle on mode change: {}",
-                    vk::to_string(result));
-    }
+    // OPTIMIZATION: Removed waitIdle() - causes full GPU stall
+    // Swapchain recreation is properly synchronized via semaphores
+    // auto result = instance.GetDevice().waitIdle();
+    // if (result != vk::Result::eSuccess) {
+    //     LOG_WARNING(ImGui, "Failed to wait for Vulkan device idle on mode change: {}",
+    //                 vk::to_string(result));
+    // }
 
     needs_hdr = hdr;
     Recreate(width, height);
@@ -256,11 +258,13 @@ void Swapchain::SetSurfaceProperties() {
 
 void Swapchain::Destroy() {
     vk::Device device = instance.GetDevice();
-    const auto wait_result = device.waitIdle();
-    if (wait_result != vk::Result::eSuccess) {
-        LOG_WARNING(Render_Vulkan, "Failed to wait for device to become idle: {}",
-                    vk::to_string(wait_result));
-    }
+    // OPTIMIZATION: Removed waitIdle() - causes unnecessary GPU stall
+    // Swapchain destruction is already properly synchronized
+    // const auto wait_result = device.waitIdle();
+    // if (wait_result != vk::Result::eSuccess) {
+    //     LOG_WARNING(Render_Vulkan, "Failed to wait for device to become idle: {}",
+    //                 vk::to_string(wait_result));
+    // }
     if (swapchain) {
         device.destroySwapchainKHR(swapchain);
     }

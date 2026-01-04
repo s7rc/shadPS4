@@ -17,10 +17,10 @@
 namespace VideoCore {
 
 static constexpr size_t DataShareBufferSize = 64_KB;
-static constexpr size_t StagingBufferSize = 512_MB;
-static constexpr size_t DownloadBufferSize = 32_MB;
-static constexpr size_t UboStreamBufferSize = 64_MB;
-static constexpr size_t DeviceBufferSize = 128_MB;
+static constexpr size_t StagingBufferSize = 768_MB;      // Increased from 512MB for better Bloodborne performance
+static constexpr size_t DownloadBufferSize = 64_MB;      // Increased from 32MB
+static constexpr size_t UboStreamBufferSize = 128_MB;    // Increased from 64MB to reduce re-uploads
+static constexpr size_t DeviceBufferSize = 256_MB;       // Increased from 128MB for iGPU shared memory
 
 BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& scheduler_,
                          AmdGpu::Liverpool* liverpool_, TextureCache& texture_cache_,

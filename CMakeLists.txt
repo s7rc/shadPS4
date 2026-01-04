@@ -19,6 +19,60 @@ endif()
 
 project(shadPS4 CXX C ASM ${ADDITIONAL_LANGUAGES})
 
+# Performance optimizations for Release builds - MUST come after project()
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    # Enable Link-Time Optimization (LTO) for better performance
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
+    if(IPO_SUPPORTED)
+        message(STATUS "IPO/LTO enabled for Release build - expect longer compile times but better performance")
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(STATUS "IPO/LTO not supported: ${IPO_ERROR}")
+    endif()
+    
+    # Add aggressive optimizations based on compiler
+    if(MSVC)
+        # MSVC-specific optimizations
+        add_compile_options(
+            /fp:fast           # Fast floating point math (safe for emulation)
+            /Ot                # Favor fast code
+            /Oi                # Enable intrinsic functions
+            /GS-               # Disable buffer security checks in Release for speed
+            /Gy                # Enable function-level linking
+        )
+        add_link_options(/LTCG)  # Link-time code generation
+        message(STATUS "MSVC Release optimizations enabled: /fp:fast /Ot /Oi /GS- /Gy /LTCG")
+    else()
+        # GCC/Clang-specific optimizations
+        add_compile_options(
+            -ffast-math        # Fast floating point (safe for emulation)
+            -O3                # Maximum optimization level
+            -funroll-loops     # Unroll loops for better performance
+            -fomit-frame-pointer  # Remove frame pointer when not needed
+        )
+        
+        # Detect Intel 11th gen Tiger Lake for optimal CPU targeting
+        # Try Tiger Lake first (11th gen), fall back to Ice Lake (10th gen) for compatibility
+        include(CheckCXXCompilerFlag)
+        check_cxx_compiler_flag("-march=tigerlake" COMPILER_SUPPORTS_TIGERLAKE)
+        
+        if(COMPILER_SUPPORTS_TIGERLAKE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+            add_compile_options(-march=tigerlake -mtune=tigerlake)
+            message(STATUS "Intel Tiger Lake (11th gen) CPU optimizations enabled")
+        else()
+            check_cxx_compiler_flag("-march=icelake-client" COMPILER_SUPPORTS_ICELAKE)
+            if(COMPILER_SUPPORTS_ICELAKE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+                add_compile_options(-march=icelake-client -mtune=intel)
+                message(STATUS "Intel Ice Lake (10th gen) CPU optimizations enabled")
+            else()
+                # Keep existing x86-64-v3 target if compiler doesn't support newer archs
+                message(STATUS "Using default x86-64-v3 target (compiler doesn't support Tiger/Ice Lake)")
+            endif()
+        endif()
+    endif()
+endif()
+
 # Forcing PIE makes sure that the base address is high enough so that it doesn't clash with the PS4 memory.
 if(UNIX AND NOT APPLE)
     set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
@@ -55,7 +109,10 @@ endif()
 if (ARCHITECTURE STREQUAL "x86_64")
     # Target x86-64-v3 CPU architecture as this is a good balance between supporting performance critical
     # instructions like AVX2 and maintaining support for older CPUs.
-    add_compile_options(-march=x86-64-v3)
+    # Note: This is overridden by more specific CPU targets in Release builds (Tiger Lake, Ice Lake)
+    if(NOT (CMAKE_BUILD_TYPE STREQUAL "Release" AND (COMPILER_SUPPORTS_TIGERLAKE OR COMPILER_SUPPORTS_ICELAKE)))
+        add_compile_options(-march=x86-64-v3)
+    endif()
 endif()
 
 if (APPLE AND ARCHITECTURE STREQUAL "x86_64" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
