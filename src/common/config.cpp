@@ -163,8 +163,8 @@ static ConfigEntry<string> padSpkOutputDevice("Default Device");
 // GPU
 static ConfigEntry<u32> windowWidth(1280);
 static ConfigEntry<u32> windowHeight(720);
-static ConfigEntry<u32> internalScreenWidth(1280);
-static ConfigEntry<u32> internalScreenHeight(720);
+static ConfigEntry<u32> internalScreenWidth(960);   // Lowered from 1280 for iGPU performance
+static ConfigEntry<u32> internalScreenHeight(540);  // Lowered from 720 for iGPU performance
 static ConfigEntry<bool> isNullGpu(false);
 static ConfigEntry<bool> shouldCopyGPUBuffers(false);
 static ConfigEntry<bool> readbacksEnabled(false);
@@ -178,7 +178,7 @@ static ConfigEntry<string> fullscreenMode("Windowed");
 static ConfigEntry<string> presentMode("Fifo");  // Changed from "Mailbox" - FIFO is better for integrated GPUs
 static ConfigEntry<bool> isHDRAllowed(false);
 static ConfigEntry<bool> fsrEnabled(false);
-static ConfigEntry<bool> rcasEnabled(true);
+static ConfigEntry<bool> rcasEnabled(false);  // Disabled - saves GPU cycles on iGPU
 static ConfigEntry<int> rcasAttenuation(250);
 
 // Vulkan
@@ -372,7 +372,7 @@ u32 getWindowHeight() {
 }
 
 u32 getInternalScreenWidth() {
-    return internalScreenHeight.get();
+    return internalScreenWidth.get();  // FIXED: was returning HEIGHT instead of WIDTH!
 }
 
 u32 getInternalScreenHeight() {
