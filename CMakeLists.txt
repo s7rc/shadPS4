@@ -33,7 +33,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
     
     # Add aggressive optimizations based on compiler
     if(MSVC)
-        # MSVC-specific optimizations (including clang-cl)
+        # MSVC-specific optimizations (works with both MSVC and clang-cl)
         add_compile_options(
             /fp:fast           # Fast floating point math (safe for emulation)
             /Ot                # Favor fast code over small code
@@ -42,11 +42,13 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
             /GS-               # Disable buffer security checks in Release for speed
             /Gy                # Enable function-level linking
             /Gw                # Optimize global data
-            /GT                # Support fiber-safe thread-local storage
-            /arch:AVX2         # Use AVX2 instructions (supported by i7-1185G7)
         )
+        
+        # Use generator expression to apply AVX2 only to C++ files (not C dependencies)
+        add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-mavx2>)
+        
         add_link_options(/LTCG /OPT:REF /OPT:ICF)  # Link-time optimizations
-        message(STATUS "MSVC Release optimizations enabled: /fp:fast /Ot /Oi /Ob3 /GS- /Gy /Gw /GT /arch:AVX2 /LTCG")
+        message(STATUS "MSVC Release optimizations enabled: /fp:fast /Ot /Oi /Ob3 /GS- /Gy /Gw /LTCG + AVX2")
     else()
         # GCC/Clang-specific optimizations
         add_compile_options(
