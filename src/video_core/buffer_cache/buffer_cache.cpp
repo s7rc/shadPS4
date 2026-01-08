@@ -83,7 +83,12 @@ void BufferCache::InvalidateMemory(VAddr device_addr, u64 size) {
 
 void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write) {
     liverpool->SendCommand<true>([this, device_addr, size, is_write] {
-        Buffer& buffer = slot_buffers[FindBuffer(device_addr, size)];
+        BufferId buffer_id = FindBuffer(device_addr, size);
+        Buffer& buffer = slot_buffers[buffer_id];
+        
+        // Prefetch buffer data into L1 cache (Iris Xe has 96KB L1 per core)
+        __builtin_prefetch(&buffer, 0, 3);  // 0=read, 3=high temporal locality
+        
         DownloadBufferMemory<false>(buffer, device_addr, size, is_write);
     });
 }

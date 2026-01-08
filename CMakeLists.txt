@@ -56,6 +56,8 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
             -O3                # Maximum optimization level
             -funroll-loops     # Unroll loops for better performance
             -fomit-frame-pointer  # Remove frame pointer when not needed
+            -DNDEBUG           # Disable all assertions in Release
+            -fno-exceptions    # Disable exception handling overhead
         )
         
         # Detect Intel 11th gen Tiger Lake for optimal CPU targeting

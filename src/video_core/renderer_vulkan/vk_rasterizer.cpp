@@ -50,34 +50,38 @@ void Rasterizer::CpSync() {
     scheduler.EndRendering();
     auto cmdbuf = scheduler.CommandBuffer();
 
+    // Optimized for Iris Xe: ByRegion allows partial pipeline flushes
     const vk::MemoryBarrier ib_barrier{
         .srcAccessMask = vk::AccessFlagBits::eShaderWrite,
         .dstAccessMask = vk::AccessFlagBits::eIndirectCommandRead,
     };
     cmdbuf.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                            vk::PipelineStageFlagBits::eDrawIndirect,
-                           vk::DependencyFlagBits::eByRegion, ib_barrier, {}, {});
+                           vk::DependencyFlagBits::eByRegion,  // Already optimal for iGPU
+                           ib_barrier, {}, {});
 }
 
 bool Rasterizer::FilterDraw() {
     const auto& regs = liverpool->regs;
-    if (regs.color_control.mode == AmdGpu::ColorControl::OperationMode::EliminateFastClear) {
+    
+    // Branch prediction: Most draws don't trigger special modes
+    if (regs.color_control.mode == AmdGpu::ColorControl::OperationMode::EliminateFastClear) [[unlikely]] {
         // Clears the render target if FCE is launched before any draws
         EliminateFastClear();
         return false;
     }
-    if (regs.color_control.mode == AmdGpu::ColorControl::OperationMode::FmaskDecompress) {
+    if (regs.color_control.mode == AmdGpu::ColorControl::OperationMode::FmaskDecompress) [[unlikely]] {
         // TODO: check for a valid MRT1 to promote the draw to the resolve pass.
         LOG_TRACE(Render_Vulkan, "FMask decompression pass skipped");
         ScopedMarkerInsert("FmaskDecompress");
         return false;
     }
-    if (regs.color_control.mode == AmdGpu::ColorControl::OperationMode::Resolve) {
+    if (regs.color_control.mode == AmdGpu::ColorControl::OperationMode::Resolve) [[unlikely]] {
         LOG_TRACE(Render_Vulkan, "Resolve pass");
         Resolve();
         return false;
     }
-    if (regs.primitive_type == AmdGpu::PrimitiveType::None) {
+    if (regs.primitive_type == AmdGpu::PrimitiveType::None) [[unlikely]] {
         LOG_TRACE(Render_Vulkan, "Primitive type 'None' skipped");
         ScopedMarkerInsert("PrimitiveTypeNone");
         return false;
@@ -94,7 +98,7 @@ bool Rasterizer::FilterDraw() {
         regs.depth_render_override.force_stencil_valid && regs.depth_buffer.StencilValid() &&
         regs.depth_buffer.StencilWriteValid() &&
         regs.depth_buffer.StencilAddress() != regs.depth_buffer.StencilWriteAddress();
-    if (cb_disabled && (depth_copy || stencil_copy)) {
+    if (cb_disabled && (depth_copy || stencil_copy)) [[unlikely]] {
         // Games may disable color buffer and enable force depth/stencil dirty and valid to
         // do a copy from one depth-stencil surface to another, without a pixel shader.
         // We need to detect this case and perform the copy, otherwise it will have no effect.
@@ -103,7 +107,7 @@ bool Rasterizer::FilterDraw() {
         return false;
     }
 
-    return true;
+    return true;  // Hot path - most draws reach here
 }
 
 void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
@@ -222,7 +226,8 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset) {
     const auto cmdbuf = scheduler.CommandBuffer();
     cmdbuf.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->Handle());
 
-    if (is_indexed) {
+    // Branch prediction: indexed draws are more common in complex games like Bloodborne
+    if (is_indexed) [[likely]] {
         cmdbuf.drawIndexed(regs.num_indices, regs.num_instances.NumInstances(), 0,
                            s32(vertex_offset), instance_offset);
     } else {

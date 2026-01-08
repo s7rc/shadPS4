@@ -34,7 +34,7 @@ class TextureCache;
 class MemoryTracker;
 class PageManager;
 
-class BufferCache {
+class alignas(64) BufferCache {  // Cache-line align for Intel 11th gen (64-byte lines)
 public:
     static constexpr u32 CACHING_PAGEBITS = 14;
     static constexpr u64 CACHING_PAGESIZE = u64{1} << CACHING_PAGEBITS;
@@ -42,10 +42,10 @@ public:
     static constexpr u64 CACHING_NUMPAGES = u64{1} << (40 - CACHING_PAGEBITS);
     static constexpr u64 BDA_PAGETABLE_SIZE = CACHING_NUMPAGES * sizeof(vk::DeviceAddress);
 
-    // Default values for garbage collection
-    static constexpr s64 DEFAULT_TRIGGER_GC_MEMORY = 1_GB;
-    static constexpr s64 DEFAULT_CRITICAL_GC_MEMORY = 2_GB;
-    static constexpr s64 TARGET_GC_THRESHOLD = 8_GB;
+    // Optimized GC values for Intel Iris Xe iGPU (shared system RAM)
+    static constexpr s64 DEFAULT_TRIGGER_GC_MEMORY = 768_MB;     // Reduced for iGPU
+    static constexpr s64 DEFAULT_CRITICAL_GC_MEMORY = 1536_MB;   // 1.5GB, reduced for iGPU
+    static constexpr s64 TARGET_GC_THRESHOLD = 6_GB;             // Reduced from 8GB
 
     struct PageData {
         BufferId buffer_id{};
@@ -88,7 +88,7 @@ public:
     }
 
     /// Retrieves the buffer with the specified id.
-    [[nodiscard]] Buffer& GetBuffer(BufferId id) {
+    [[nodiscard]]  __attribute__((always_inline)) inline Buffer& GetBuffer(BufferId id) {
         return slot_buffers[id];
     }
 

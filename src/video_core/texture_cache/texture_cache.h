@@ -31,10 +31,11 @@ class BufferCache;
 class PageManager;
 
 class TextureCache {
-    // Default values for garbage collection
-    static constexpr s64 DEFAULT_PRESSURE_GC_MEMORY = 1_GB + 512_MB;
-    static constexpr s64 DEFAULT_CRITICAL_GC_MEMORY = 3_GB;
-    static constexpr s64 TARGET_GC_THRESHOLD = 8_GB;
+    // Optimized GC values for Intel Iris Xe iGPU (shared system RAM)
+    // Lower thresholds prevent memory pressure on shared memory architecture
+    static constexpr s64 DEFAULT_PRESSURE_GC_MEMORY = 1_GB;      // Reduced from 1.5GB
+    static constexpr s64 DEFAULT_CRITICAL_GC_MEMORY = 2_GB;      // Reduced from 3GB
+    static constexpr s64 TARGET_GC_THRESHOLD = 6_GB;             // Reduced from 8GB
 
     using ImageIds = boost::container::small_vector<ImageId, 16>;
 
@@ -141,7 +142,7 @@ public:
                                          AmdGpu::BorderColorBuffer border_color_base);
 
     /// Retrieves the image with the specified id.
-    [[nodiscard]] Image& GetImage(ImageId id) {
+    [[nodiscard]] __attribute__((always_inline)) inline Image& GetImage(ImageId id) {
         auto& image = slot_images[id];
         TouchImage(image);
         return image;
