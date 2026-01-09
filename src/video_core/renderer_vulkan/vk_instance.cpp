@@ -206,7 +206,9 @@ std::string Instance::GetDriverVersionName() {
 }
 
 bool Instance::CreateDevice() {
-    const vk::StructureChain feature_chain =
+    // INTEL OPTIMIZATION: Modified Structure Chain to include 16-bit features
+    // Removed 'const' to allow enabling features
+    vk::StructureChain feature_chain =
         physical_device
             .getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features,
                           vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan13Features,
@@ -215,13 +217,15 @@ bool Instance::CreateDevice() {
                           vk::PhysicalDevicePrimitiveTopologyListRestartFeaturesEXT,
                           vk::PhysicalDevicePortabilitySubsetFeaturesKHR,
                           vk::PhysicalDeviceShaderAtomicFloat2FeaturesEXT,
-                          vk::PhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR>();
+                          vk::PhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR,
+                          vk::PhysicalDeviceShaderFloat16Int8Features,   // Added
+                          vk::PhysicalDevice16BitStorageFeatures>();     // Added
     features = feature_chain.get().features;
     
     // INTEL OPTIMIZATION: Enable Float16 Math for Shaders (2x ALU performance on Tiger Lake)
-    // Also disable robust buffer access as requested
+    // Also disable robust buffer access as requested.
+    // robustBufferAccess is in standard features. robustBufferAccess2 is in EXT struct.
     features.robustBufferAccess = VK_FALSE;
-    features.robustBufferAccess2 = VK_FALSE;
     
     // Enable 16-bit storage/float features if available (Tiger Lake supports this)
     auto& float16_features = feature_chain.get<vk::PhysicalDeviceShaderFloat16Int8Features>();
@@ -230,6 +234,12 @@ bool Instance::CreateDevice() {
     auto& storage16_features = feature_chain.get<vk::PhysicalDevice16BitStorageFeatures>();
     storage16_features.storageBuffer16BitAccess = VK_TRUE;
     storage16_features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+
+    // Fix Robustness2 access (it needs to be checked later via extension name or retrieved from chain safely)
+    auto& rob2 = feature_chain.get<vk::PhysicalDeviceRobustness2FeaturesEXT>();
+    rob2.robustBufferAccess2 = VK_FALSE;
+    rob2.robustImageAccess2 = VK_FALSE;
+    rob2.nullDescriptor = VK_FALSE;
 
     const vk::StructureChain properties_chain = physical_device.getProperties2<
         vk::PhysicalDeviceProperties2, vk::PhysicalDeviceVulkan11Properties,
