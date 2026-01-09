@@ -408,7 +408,8 @@ bool Rasterizer::BindResources(const Pipeline* pipeline) {
         // DRASTIC OPTIMIZATION: Skip binding if draw is "trivial" (heuristic)
         // If we have minimal bindings and no heavy compute, skip to save CPU overhead
         // This is extremely aggressive and might flicker.
-        if (stage->num_buffers == 0 && stage->num_textures == 0 && stage->stage == Shader::LogicalStage::Vertex) {
+        // Fix: Use correct members from Shader::Info
+        if (stage->buffers.empty() && stage->images.empty() && stage->stage == Shader::Stage::Vertex) {
              continue; 
         }
 
