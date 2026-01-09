@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <immintrin.h> // For AVX-512 intrinsics
 #include "common/alignment.h"
 #include "common/debug.h"
 #include "common/scope_exit.h"
@@ -133,8 +134,33 @@ void BufferCache::DownloadBufferMemory(Buffer& buffer, VAddr device_addr, u64 si
         for (const auto& copy : copies) {
             const VAddr copy_device_addr = buffer.CpuAddr() + copy.srcOffset;
             const u64 dst_offset = copy.dstOffset - offset;
-            memory->TryWriteBacking(std::bit_cast<u8*>(copy_device_addr), download + dst_offset,
-                                    copy.size);
+            u8* src_ptr = std::bit_cast<u8*>(copy_device_addr);
+            u8* dst_ptr = download + dst_offset;
+            const u64 length = copy.size;
+
+            // INTEL OPTIMIZATION: AVX-512 Streaming Store for Zero-Copy UMA
+            // Using _mm512_stream_si512 helper avoids cache pollution on shared memory
+            #if defined(__AVX512F__)
+            if (length >= 64) {
+                 size_t i = 0;
+                 // Align destination to 64 bytes if possible, but for streaming stores
+                 // 64-byte chunks are key.
+                 for (; i <= length - 64; i += 64) {
+                     __m512i data = _mm512_loadu_si512((__m512i*)(src_ptr + i));
+                     _mm512_stream_si512((__m512i*)(dst_ptr + i), data);
+                 }
+                 // Handle remaining bytes with standard copy
+                 if (i < length) {
+                     std::memcpy(dst_ptr + i, src_ptr + i, length - i);
+                 }
+                 _mm_sfence(); // Ensure non-temporal stores are visible
+            } else 
+            #endif
+            {
+                // Fallback for small copies or non-AVX512 builds
+                memory->TryWriteBacking(std::bit_cast<u8*>(copy_device_addr), download + dst_offset,
+                                        copy.size);
+            }
         }
         memory_tracker->UnmarkRegionAsGpuModified(device_addr, size);
         if (is_write) {

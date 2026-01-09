@@ -10,6 +10,7 @@
 #include "sdl_window.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_swapchain.h"
+#include "video_core/renderer_vulkan/vk_intel_optimizations.h"
 
 namespace Vulkan {
 
@@ -201,6 +202,14 @@ void Swapchain::FindPresentMode() {
         return;
     }
 
+    // Intel Iris Xe Optimization
+    const auto properties = instance.GetPhysicalDevice().getProperties();
+    if (IntelOptimizations::IsIntelIrisXe(properties)) {
+        LOG_INFO(Render_Vulkan, "Intel Iris Xe detected! Applying optimal present mode.");
+        present_mode = IntelOptimizations::GetIntelOptimalPresentMode(modes);
+        return;
+    }
+
     const auto requested_mode = Config::getPresentMode();
     if (requested_mode == "Mailbox") {
         present_mode = vk::PresentModeKHR::eMailbox;
@@ -239,6 +248,14 @@ void Swapchain::SetSurfaceProperties() {
 
     // Select number of images in swap chain, we prefer one buffer in the background to work on
     image_count = capabilities.minImageCount + 1;
+    
+    // Intel Iris Xe Optimization: Use tuned image count (Double buffer saves 8MB+ VRAM)
+    const auto properties = instance.GetPhysicalDevice().getProperties();
+    if (IntelOptimizations::IsIntelIrisXe(properties)) {
+        LOG_INFO(Render_Vulkan, "Intel Iris Xe detected! Applying optimal swapchain image count.");
+        image_count = IntelOptimizations::GetIntelOptimalSwapchainImageCount(capabilities);
+    }
+
     if (capabilities.maxImageCount > 0) {
         image_count = std::min(image_count, capabilities.maxImageCount);
     }

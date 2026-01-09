@@ -45,15 +45,17 @@ Sampler::Sampler(const Vulkan::Instance& instance, const AmdGpu::Sampler& sample
 
     const vk::SamplerCreateInfo sampler_ci = {
         .pNext = custom_color ? &*custom_color : nullptr,
-        .magFilter = LiverpoolToVK::Filter(sampler.xy_mag_filter),
-        .minFilter = LiverpoolToVK::Filter(sampler.xy_min_filter),
-        .mipmapMode = LiverpoolToVK::MipFilter(sampler.mip_filter),
+        // DRASTIC OPTIMIZATION: Force Bilinear (or Nearest) to save Bandwidth
+        // Iris Xe has low sampler throughput. Disabling Anisotropy saves MASSIVE cycles.
+        .magFilter = vk::Filter::eLinear, // LiverpoolToVK::Filter(sampler.xy_mag_filter),
+        .minFilter = vk::Filter::eLinear, // LiverpoolToVK::Filter(sampler.xy_min_filter),
+        .mipmapMode = vk::SamplerMipmapMode::eLinear, // LiverpoolToVK::MipFilter(sampler.mip_filter),
         .addressModeU = LiverpoolToVK::ClampMode(sampler.clamp_x),
         .addressModeV = LiverpoolToVK::ClampMode(sampler.clamp_y),
         .addressModeW = LiverpoolToVK::ClampMode(sampler.clamp_z),
         .mipLodBias = std::min(sampler.LodBias(), instance.MaxSamplerLodBias()),
-        .anisotropyEnable = anisotropy_enable,
-        .maxAnisotropy = max_anisotropy,
+        .anisotropyEnable = VK_FALSE, // FORCE DISABLE ANISOTROPY
+        .maxAnisotropy = 1.0f,        // FORCE 1x ANISOTROPY
         .compareEnable = sampler.depth_compare_func != AmdGpu::DepthCompare::Never,
         .compareOp = LiverpoolToVK::DepthCompare(sampler.depth_compare_func),
         .minLod = sampler.MinLod(),

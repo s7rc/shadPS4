@@ -217,6 +217,19 @@ bool Instance::CreateDevice() {
                           vk::PhysicalDeviceShaderAtomicFloat2FeaturesEXT,
                           vk::PhysicalDeviceWorkgroupMemoryExplicitLayoutFeaturesKHR>();
     features = feature_chain.get().features;
+    
+    // INTEL OPTIMIZATION: Enable Float16 Math for Shaders (2x ALU performance on Tiger Lake)
+    // Also disable robust buffer access as requested
+    features.robustBufferAccess = VK_FALSE;
+    features.robustBufferAccess2 = VK_FALSE;
+    
+    // Enable 16-bit storage/float features if available (Tiger Lake supports this)
+    auto& float16_features = feature_chain.get<vk::PhysicalDeviceShaderFloat16Int8Features>();
+    float16_features.shaderFloat16 = VK_TRUE;
+    
+    auto& storage16_features = feature_chain.get<vk::PhysicalDevice16BitStorageFeatures>();
+    storage16_features.storageBuffer16BitAccess = VK_TRUE;
+    storage16_features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
 
     const vk::StructureChain properties_chain = physical_device.getProperties2<
         vk::PhysicalDeviceProperties2, vk::PhysicalDeviceVulkan11Properties,

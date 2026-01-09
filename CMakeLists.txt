@@ -51,13 +51,19 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
         message(STATUS "MSVC Release optimizations enabled: /fp:fast /Ot /Oi /Ob3 /GS- /Gy /Gw /LTCG + AVX2")
     else()
         # GCC/Clang-specific optimizations
-        add_compile_options(
             -ffast-math        # Fast floating point (safe for emulation)
             -O3                # Maximum optimization level
             -funroll-loops     # Unroll loops for better performance
             -fomit-frame-pointer  # Remove frame pointer when not needed
             -DNDEBUG           # Disable all assertions in Release
             -fno-exceptions    # Disable exception handling overhead
+
+            # INTEL TIGER LAKE OPTIMIZATION (IRIS XE)
+            -march=tigerlake   # Optimize for 11th Gen Intel Core + Iris Xe
+            -mavx512f          # Enable AVX-512 Foundation
+            -mavx512vl         # Enable AVX-512 Vector Length extensions
+            -mavx512dq         # Enable AVX-512 Doubleword and Quadword instructions
+        )
         )
         
         # Detect Intel 11th gen Tiger Lake for optimal CPU targeting

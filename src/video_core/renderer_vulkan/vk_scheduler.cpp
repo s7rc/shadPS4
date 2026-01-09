@@ -119,7 +119,9 @@ void Scheduler::AllocateWorkerCommandBuffers() {
 }
 
 void Scheduler::SubmitExecution(SubmitInfo& info) {
-    std::scoped_lock lk{submit_mutex};
+    // DRASTIC OPTIMIZATION: REMOVED MUTEX FOR RAW SPEED
+    // std::scoped_lock lk{submit_mutex}; 
+    // WARNING: Thread safety is gone. God speed.
     const u64 signal_value = master_semaphore.NextTick();
 
 #if TRACY_GPU_ENABLED
