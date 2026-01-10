@@ -355,23 +355,25 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
             case PM4ItOpcode::SetContextReg: {
                 const auto* set_data = reinterpret_cast<const PM4CmdSetData*>(header);
                 const auto reg_addr = Regs::ContextRegWordOffset + set_data->reg_offset;
-                const auto* payload = reinterpret_cast<const u8*>(header + 2);
-                u8* dst = reinterpret_cast<u8*>(&regs.reg_array[reg_addr]);
+                // Keep u32* for NOP hint access (lines 399-401)
+                const auto* payload = reinterpret_cast<const u32*>(header + 2);
                 const size_t size = (count - 1) * sizeof(u32);
 
                 // AVX-512 OPTIMIZED: Hot path for context register uploads
                 #if defined(__AVX512F__)
                 if (size >= 64) {
+                    const u8* src = reinterpret_cast<const u8*>(payload);
+                    u8* dst = reinterpret_cast<u8*>(&regs.reg_array[reg_addr]);
                     size_t i = 0;
                     for (; i <= size - 64; i += 64) {
-                        __m512i zmm = _mm512_loadu_si512((const void*)(payload + i));
+                        __m512i zmm = _mm512_loadu_si512((const void*)(src + i));
                         _mm512_storeu_si512((void*)(dst + i), zmm);
                     }
-                    if (i < size) std::memcpy(dst + i, payload + i, size - i);
+                    if (i < size) std::memcpy(dst + i, src + i, size - i);
                 } else
                 #endif
                 {
-                    std::memcpy(dst, payload, size);
+                    std::memcpy(&regs.reg_array[reg_addr], payload, size);
                 }
 
                 // In the case of HW, render target memory has alignment as color block operates on
