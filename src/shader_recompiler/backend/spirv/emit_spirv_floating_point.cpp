@@ -159,20 +159,32 @@ Id EmitFPNeg64(EmitContext& ctx, Id value) {
     return ctx.OpFNegate(ctx.F64[1], value);
 }
 
+Id DecorateFast(EmitContext& ctx, IR::Inst* inst, Id op) {
+    // NAUGHTY DOG TRICK: UNLIMITED POWERRRR
+    // Apply all fast-math flags: NotNaN | NotInf | NSZ | AllowRecip | Fast
+    ctx.Decorate(op, spv::Decoration::FPFastMathMode, 0x1f); 
+    return op;
+}
+
 Id EmitFPSin(EmitContext& ctx, Id value) {
-    return ctx.OpSin(ctx.F32[1], ctx.OpFMul(ctx.F32[1], ctx.pi_x2, value));
+    // No native SPIR-V OpSinFast, but consistent decoration helps driver
+     Id res = ctx.OpSin(ctx.F32[1], ctx.OpFMul(ctx.F32[1], ctx.pi_x2, value));
+     return DecorateFast(ctx, nullptr, res);
 }
 
 Id EmitFPCos(EmitContext& ctx, Id value) {
-    return ctx.OpCos(ctx.F32[1], ctx.OpFMul(ctx.F32[1], ctx.pi_x2, value));
+    Id res = ctx.OpCos(ctx.F32[1], ctx.OpFMul(ctx.F32[1], ctx.pi_x2, value));
+    return DecorateFast(ctx, nullptr, res);
 }
 
 Id EmitFPExp2(EmitContext& ctx, Id value) {
-    return ctx.OpExp2(ctx.F32[1], value);
+    // Iris Xe loves Exp2, but let's tell it we don't care about precision
+    return DecorateFast(ctx, nullptr, ctx.OpExp2(ctx.F32[1], value));
 }
 
 Id EmitFPPow(EmitContext& ctx, Id x, Id y) {
-    return ctx.OpPow(ctx.F32[1], x, y);
+    // Power is extremely expensive. 
+    return DecorateFast(ctx, nullptr, ctx.OpPow(ctx.F32[1], x, y));
 }
 
 Id EmitFPLdexp(EmitContext& ctx, Id value, Id exp) {
@@ -180,11 +192,12 @@ Id EmitFPLdexp(EmitContext& ctx, Id value, Id exp) {
 }
 
 Id EmitFPLog2(EmitContext& ctx, Id value) {
-    return ctx.OpLog2(ctx.F32[1], value);
+    return DecorateFast(ctx, nullptr, ctx.OpLog2(ctx.F32[1], value));
 }
 
 Id EmitFPRecip32(EmitContext& ctx, Id value) {
-    return ctx.OpFDiv(ctx.F32[1], ctx.ConstF32(1.0f), value);
+    Id res = ctx.OpFDiv(ctx.F32[1], ctx.ConstF32(1.0f), value);
+    return DecorateFast(ctx, nullptr, res);
 }
 
 Id EmitFPRecip64(EmitContext& ctx, Id value) {
@@ -192,7 +205,8 @@ Id EmitFPRecip64(EmitContext& ctx, Id value) {
 }
 
 Id EmitFPRecipSqrt32(EmitContext& ctx, Id value) {
-    return ctx.OpInverseSqrt(ctx.F32[1], value);
+    // Already fast on hardware, but decoration allows reordering
+    return DecorateFast(ctx, nullptr, ctx.OpInverseSqrt(ctx.F32[1], value));
 }
 
 Id EmitFPRecipSqrt64(EmitContext& ctx, Id value) {
@@ -200,7 +214,10 @@ Id EmitFPRecipSqrt64(EmitContext& ctx, Id value) {
 }
 
 Id EmitFPSqrt(EmitContext& ctx, Id value) {
-    return ctx.OpSqrt(ctx.F32[1], value);
+    // Replace Sqrt with (1 / rsqrt) if rsqrt is faster? 
+    // Usually hardware has dedicated SQRT unit or RSQRT. 
+    // Let's just decorate it.
+    return DecorateFast(ctx, nullptr, ctx.OpSqrt(ctx.F32[1], value));
 }
 
 Id EmitFPSaturate32(EmitContext& ctx, Id value) {

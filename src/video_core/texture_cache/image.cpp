@@ -319,13 +319,13 @@ void Image::Transit(vk::ImageLayout dst_layout, vk::AccessFlags2 dst_mask,
         scheduler->EndRendering();
         cmdbuf = scheduler->CommandBuffer();
     }
-    // INSANE OPTIMIZATION: NO BARRIERS.
-    // We update the state tracking in GetBarriers, but we DO NOT emit the barrier to the GPU.
-    // This allows the GPU to run free, potentially reading hazardous data, but with 0 driver overhead.
-    // cmdbuf.pipelineBarrier2(vk::DependencyInfo{
-    //     .imageMemoryBarrierCount = static_cast<u32>(barriers.size()),
-    //     .pImageMemoryBarriers = barriers.data(),
-    // });
+    // REVERTED INSANE OPTIMIZATION: Barriers restored to fix "Rainbow Textures"
+    // Using eByRegion to help Iris Xe tile utilization where possible.
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{
+        .dependencyFlags = vk::DependencyFlagBits::eByRegion, 
+        .imageMemoryBarrierCount = static_cast<u32>(barriers.size()),
+        .pImageMemoryBarriers = barriers.data(),
+    });
 }
 
 void Image::Upload(std::span<const vk::BufferImageCopy> upload_copies, vk::Buffer buffer,
@@ -355,20 +355,20 @@ void Image::Upload(std::span<const vk::BufferImageCopy> upload_copies, vk::Buffe
         GetBarriers(vk::ImageLayout::eTransferDstOptimal, vk::AccessFlagBits2::eTransferWrite,
                     vk::PipelineStageFlagBits2::eCopy, {});
     const auto cmdbuf = scheduler->CommandBuffer();
-    // cmdbuf.pipelineBarrier2(vk::DependencyInfo{
-    //     .dependencyFlags = vk::DependencyFlagBits::eByRegion,
-    //     .bufferMemoryBarrierCount = 1,
-    //     .pBufferMemoryBarriers = &pre_barrier,
-    //     .imageMemoryBarrierCount = static_cast<u32>(image_barriers.size()),
-    //     .pImageMemoryBarriers = image_barriers.data(),
-    // });
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{
+        .dependencyFlags = vk::DependencyFlagBits::eByRegion,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers = &pre_barrier,
+        .imageMemoryBarrierCount = static_cast<u32>(image_barriers.size()),
+        .pImageMemoryBarriers = image_barriers.data(),
+    });
     cmdbuf.copyBufferToImage(buffer, GetImage(), vk::ImageLayout::eTransferDstOptimal,
                              upload_copies);
-    // cmdbuf.pipelineBarrier2(vk::DependencyInfo{
-    //     .dependencyFlags = vk::DependencyFlagBits::eByRegion,
-    //     .bufferMemoryBarrierCount = 1,
-    //     .pBufferMemoryBarriers = &post_barrier,
-    // });
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{
+        .dependencyFlags = vk::DependencyFlagBits::eByRegion,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers = &post_barrier,
+    });
     flags &= ~ImageFlagBits::Dirty;
 }
 
@@ -399,20 +399,20 @@ void Image::Download(std::span<const vk::BufferImageCopy> download_copies, vk::B
         GetBarriers(vk::ImageLayout::eTransferSrcOptimal, vk::AccessFlagBits2::eTransferRead,
                     vk::PipelineStageFlagBits2::eCopy, {});
     auto cmdbuf = scheduler->CommandBuffer();
-    // cmdbuf.pipelineBarrier2(vk::DependencyInfo{
-    //     .dependencyFlags = vk::DependencyFlagBits::eByRegion,
-    //     .bufferMemoryBarrierCount = 1,
-    //     .pBufferMemoryBarriers = &pre_barrier,
-    //     .imageMemoryBarrierCount = static_cast<u32>(image_barriers.size()),
-    //     .pImageMemoryBarriers = image_barriers.data(),
-    // });
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{
+        .dependencyFlags = vk::DependencyFlagBits::eByRegion,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers = &pre_barrier,
+        .imageMemoryBarrierCount = static_cast<u32>(image_barriers.size()),
+        .pImageMemoryBarriers = image_barriers.data(),
+    });
     cmdbuf.copyImageToBuffer(GetImage(), vk::ImageLayout::eTransferSrcOptimal, buffer,
                              download_copies);
-    // cmdbuf.pipelineBarrier2(vk::DependencyInfo{
-    //     .dependencyFlags = vk::DependencyFlagBits::eByRegion,
-    //     .bufferMemoryBarrierCount = 1,
-    //     .pBufferMemoryBarriers = &post_barrier,
-    // });
+    cmdbuf.pipelineBarrier2(vk::DependencyInfo{
+        .dependencyFlags = vk::DependencyFlagBits::eByRegion,
+        .bufferMemoryBarrierCount = 1,
+        .pBufferMemoryBarriers = &post_barrier,
+    });
 }
 
 static std::pair<u32, u32> SanitizeCopyLayers(const ImageInfo& src_info, const ImageInfo& dst_info,
