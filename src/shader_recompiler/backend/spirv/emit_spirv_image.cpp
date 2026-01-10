@@ -83,7 +83,18 @@ Id EmitImageSampleImplicitLod(EmitContext& ctx, IR::Inst* inst, u32 handle, Id c
     const Id sampler = ctx.OpLoad(ctx.sampler_type, ctx.samplers[handle >> 16]);
     const Id sampled_image = ctx.OpSampledImage(texture.sampled_type, image, sampler);
     ImageOperands operands;
-    operands.Add(spv::ImageOperandsMask::Bias, bias);
+    
+    // IRIS XE OPTIMIZATION: Force aggressive LOD bias (+2.0)
+    // This forces lower mipmap levels, reducing texture bandwidth
+    // Visual cost: textures will appear blurrier
+    Id effective_bias = bias;
+    if (Sirit::ValidId(bias)) {
+        effective_bias = ctx.OpFAdd(ctx.F32[1], bias, ctx.ConstF32(2.0f));
+    } else {
+        effective_bias = ctx.ConstF32(2.0f);
+    }
+    operands.Add(spv::ImageOperandsMask::Bias, effective_bias);
+    
     operands.AddOffset(ctx, offset);
     const Id sample = ctx.OpImageSampleImplicitLod(result_type, sampled_image, coords,
                                                    operands.mask, operands.operands);
@@ -98,7 +109,11 @@ Id EmitImageSampleExplicitLod(EmitContext& ctx, IR::Inst* inst, u32 handle, Id c
     const Id sampler = ctx.OpLoad(ctx.sampler_type, ctx.samplers[handle >> 16]);
     const Id sampled_image = ctx.OpSampledImage(texture.sampled_type, image, sampler);
     ImageOperands operands;
-    operands.Add(spv::ImageOperandsMask::Lod, lod);
+    
+    // IRIS XE OPTIMIZATION: Force higher LOD (+2) for lower texture quality
+    Id effective_lod = ctx.OpFAdd(ctx.F32[1], lod, ctx.ConstF32(2.0f));
+    operands.Add(spv::ImageOperandsMask::Lod, effective_lod);
+    
     operands.AddOffset(ctx, offset);
     const Id sample = ctx.OpImageSampleExplicitLod(result_type, sampled_image, coords,
                                                    operands.mask, operands.operands);
