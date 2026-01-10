@@ -141,19 +141,43 @@ void BufferCache::DownloadBufferMemory(Buffer& buffer, VAddr device_addr, u64 si
             // INTEL OPTIMIZATION: AVX-512 Streaming Store for Zero-Copy UMA
             // Using _mm512_stream_si512 helper avoids cache pollution on shared memory
             #if defined(__AVX512F__)
-            if (length >= 64) {
+            // ASM: Optimized AVX-512 Stream Loop
+            if (length >= 256) {
+                size_t i = 0;
+                // Unroll 4x for pipeline saturation
+                for (; i <= length - 256; i += 256) {
+                    // ASM: vmovdqu64 zmm0, [src + i]
+                    __m512i zmm0 = _mm512_loadu_si512((const void*)(src_ptr + i));
+                    __m512i zmm1 = _mm512_loadu_si512((const void*)(src_ptr + i + 64));
+                    __m512i zmm2 = _mm512_loadu_si512((const void*)(src_ptr + i + 128));
+                    __m512i zmm3 = _mm512_loadu_si512((const void*)(src_ptr + i + 192));
+
+                    // ASM: vmovntdq [dst + i], zmm0 (Non-temporal store)
+                    _mm512_stream_si512((void*)(dst_ptr + i), zmm0);
+                    _mm512_stream_si512((void*)(dst_ptr + i + 64), zmm1);
+                    _mm512_stream_si512((void*)(dst_ptr + i + 128), zmm2);
+                    _mm512_stream_si512((void*)(dst_ptr + i + 192), zmm3);
+                }
+                // Handle remaining 64-byte blocks
+                for (; i <= length - 64; i += 64) {
+                    __m512i zmm = _mm512_loadu_si512((const void*)(src_ptr + i));
+                    _mm512_stream_si512((void*)(dst_ptr + i), zmm);
+                }
+                // Handle tail
+                if (i < length) {
+                    std::memcpy(dst_ptr + i, src_ptr + i, length - i);
+                }
+                _mm_sfence(); 
+            } else if (length >= 64) {
                  size_t i = 0;
-                 // Align destination to 64 bytes if possible, but for streaming stores
-                 // 64-byte chunks are key.
                  for (; i <= length - 64; i += 64) {
-                     __m512i data = _mm512_loadu_si512((__m512i*)(src_ptr + i));
-                     _mm512_stream_si512((__m512i*)(dst_ptr + i), data);
+                     __m512i zmm = _mm512_loadu_si512((const void*)(src_ptr + i));
+                     _mm512_stream_si512((void*)(dst_ptr + i), zmm);
                  }
-                 // Handle remaining bytes with standard copy
                  if (i < length) {
                      std::memcpy(dst_ptr + i, src_ptr + i, length - i);
                  }
-                 _mm_sfence(); // Ensure non-temporal stores are visible
+                 _mm_sfence();
             } else 
             #endif
             {

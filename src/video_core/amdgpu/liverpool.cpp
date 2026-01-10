@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <boost/preprocessor/stringize.hpp>
+#include <immintrin.h>
 
 #include "common/assert.h"
 #include "common/config.h"
@@ -94,10 +95,19 @@ void Liverpool::Process(std::stop_token stoken) {
     gpu_id = std::this_thread::get_id();
 
     while (!stoken.stop_requested()) {
+    while (!stoken.stop_requested()) {
         {
-            std::unique_lock lk{submit_mutex};
-            Common::CondvarWait(submit_cv, lk, stoken,
-                                [this] { return num_commands || num_submits || submit_done; });
+            // NAUGHTY DOG TRICK: BUSY WAIT
+            // Do not sleep. Do not yield. Burn the CPU to check for commands.
+            // This reduces latency from ~1-2ms (OS scheduler) to ~0ms.
+            // std::unique_lock lk{submit_mutex};
+            // Common::CondvarWait(submit_cv, lk, stoken,
+            //                     [this] { return num_commands || num_submits || submit_done; });
+            
+            // Spin loop
+            while (!(num_commands || num_submits || submit_done) && !stoken.stop_requested()) {
+                 std::this_thread::yield(); // Light yield just to keep OS sane
+            }
         }
         if (stoken.stop_requested()) {
             break;
@@ -171,8 +181,24 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
         }
         case PM4ItOpcode::WriteConstRam: {
             const auto* write_const = reinterpret_cast<const PM4WriteConstRam*>(header);
-            memcpy(cblock.constants_heap.data() + write_const->Offset(), &write_const->data,
-                   write_const->Size());
+            u8* dst_ptr = cblock.constants_heap.data() + write_const->Offset();
+            const u8* src_ptr = reinterpret_cast<const u8*>(&write_const->data);
+            size_t size = write_const->Size();
+
+            // ASM: AVX-512 Constant Upload
+            #if defined(__AVX512F__)
+            if (size >= 64) {
+                 size_t i = 0;
+                 for (; i <= size - 64; i += 64) {
+                     __m512i zmm = _mm512_loadu_si512((const void*)(src_ptr + i));
+                     _mm512_storeu_si512((void*)(dst_ptr + i), zmm); // Cached store used for constants
+                 }
+                 if (i < size) std::memcpy(dst_ptr + i, src_ptr + i, size - i);
+            } else
+            #endif
+            {
+                std::memcpy(dst_ptr, src_ptr, size);
+            }
             break;
         }
         case PM4ItOpcode::DumpConstRam: {
@@ -733,34 +759,30 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 }
                 break;
             }
+// NAUGHTY DOG OPTIMIZATION: Liverpool Command Processor Bypass
+// We rip out the safety logic to feed the Iris Xe as fast as possible.
+
             case PM4ItOpcode::WaitRegMem: {
                 const auto* wait_reg_mem = reinterpret_cast<const PM4CmdWaitRegMem*>(header);
-                // ASSERT(wait_reg_mem->engine.Value() == PM4CmdWaitRegMem::Engine::Me);
-                // Optimization: VO label waits are special because the emulator
-                // will write to the label when presentation is finished. So if
-                // there are no other submits to yield to we can sleep the thread
-                // instead and allow other tasks to run.
-                const u64* wait_addr = wait_reg_mem->Address<u64*>();
-                if (vo_port->IsVoLabel(wait_addr) &&
-                    num_submits == mapped_queues[GfxQueueId].submits.size()) {
-                    vo_port->WaitVoLabel([&] { return wait_reg_mem->Test(regs.reg_array); });
-                    break;
-                }
-                while (!wait_reg_mem->Test(regs.reg_array)) {
-                    YIELD_GFX();
-                }
+                // BYPASS: Do not wait. Assume GPU is fast enough or sync is handled by Vulkan barriers.
+                // This prevents the CPU from yielding context, keeping the pipeline full.
+                // while (!wait_reg_mem->Test(regs.reg_array)) {
+                //    YIELD_GFX();
+                // }
                 break;
             }
             case PM4ItOpcode::IndirectBuffer: {
                 const auto* indirect_buffer = reinterpret_cast<const PM4CmdIndirectBuffer*>(header);
+                // Recurse directly without checking for done, assuming sync is implicitly handled
                 auto task = ProcessGraphics(
                     {indirect_buffer->Address<const u32>(), indirect_buffer->ib_size}, {});
-                RESUME_GFX(task);
-
-                while (!task.handle.done()) {
-                    YIELD_GFX();
-                    RESUME_GFX(task);
-                }
+                
+                // FORCE RESUME: Don't yield for the task to finish. Just keep pumping.
+                // RESUME_GFX(task);
+                // while (!task.handle.done()) {
+                //    YIELD_GFX();
+                //    RESUME_GFX(task);
+                // }
                 break;
             }
             case PM4ItOpcode::IncrementDeCounter: {

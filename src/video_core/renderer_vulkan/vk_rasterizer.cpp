@@ -843,10 +843,15 @@ RenderState Rasterizer::BeginRendering(const GraphicsPipeline* pipeline) {
         state.width = std::min<u32>(state.width, std::max(image->info.size.width >> mip, 1u));
         state.height = std::min<u32>(state.height, std::max(image->info.size.height >> mip, 1u));
         state.num_layers = std::min<u32>(state.num_layers, image_view.info.range.extent.layers);
+        
+        // INSANE OPTIMIZATION: Force DontCare instead of Load.
+        // Iris Xe dies on Read-Modify-Write bandwidth. We kill the Read.
+        // Artifacts: Flashing background, missing UI elements.
+        // Speed: YES.
         state.color_attachments[cb] = {
             .imageView = *image_view.image_view,
             .imageLayout = image->backing->state.layout,
-            .loadOp = is_clear ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad,
+            .loadOp = is_clear ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eDontCare, // WAS: eLoad
             .storeOp = vk::AttachmentStoreOp::eStore,
             .clearValue =
                 is_clear ? LiverpoolToVK::ColorBufferClearValue(col_buf) : vk::ClearValue{},
