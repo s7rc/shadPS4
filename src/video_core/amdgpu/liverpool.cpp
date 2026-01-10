@@ -95,7 +95,6 @@ void Liverpool::Process(std::stop_token stoken) {
     gpu_id = std::this_thread::get_id();
 
     while (!stoken.stop_requested()) {
-    while (!stoken.stop_requested()) {
         {
             // NAUGHTY DOG TRICK: BUSY WAIT
             // Do not sleep. Do not yield. Burn the CPU to check for commands.
